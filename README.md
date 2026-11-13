@@ -4,9 +4,33 @@
 
 ## 설치 및 업데이트
 
-### 제트카 플러그인 설치
+### Codex 화면에서 설치하기
 
-Windows PowerShell에서 아래 두 줄을 실행합니다.
+1. [제트카 ZIP 다운로드](https://github.com/jetcar-dev/jetcar-ai/archive/refs/heads/main.zip)를 누르고, 다운로드한 파일을 우클릭해 **모두 압축 풀기**를 선택합니다.
+2. ChatGPT 데스크톱 앱에서 **Codex**를 열고 **프로젝트 추가**에서 압축을 푼 `jetcar-ai-main` 폴더를 선택합니다.
+3. **플러그인 → 제트카 도구 → 제트카 → 플러그인 설치**를 누릅니다. 이어서 사용할 도구의 설정은 아래 **MCP 목록**에서 확인합니다.
+
+Git과 Codex CLI는 아래 PowerShell 설치 방식에서 사용합니다.
+
+### PowerShell에서 설치하기
+
+#### 1. 처음 한 번 설치하기
+
+1. ChatGPT 데스크톱 앱을 설치하고 로그인한 뒤 **Codex**를 엽니다. [Windows 앱 다운로드](https://learn.chatgpt.com/docs/windows/windows-app#download-the-chatgpt-desktop-app)
+2. **Git for Windows** 설치 파일을 내려받아 실행합니다. PowerShell에서 `git --version`으로 버전이 표시되면 건너뜁니다. [Git 설치 파일](https://git-scm.com/install/windows)
+3. **Codex CLI**를 설치합니다. PowerShell에서 `codex --version`으로 버전이 표시되면 건너뜁니다. [OpenAI 공식 Windows 설치 안내](https://learn.chatgpt.com/docs/enterprise/windows-deployment#choose-an-installation-method)
+
+```powershell
+$codexInstaller = Join-Path $env:TEMP 'codex-install.ps1'
+Invoke-WebRequest -UseBasicParsing -Uri 'https://chatgpt.com/codex/install.ps1' -OutFile $codexInstaller
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File $codexInstaller
+```
+
+설치가 끝나면 PowerShell을 닫았다가 다시 열고 `git --version`과 `codex --version`으로 확인합니다.
+
+#### 2. 제트카 플러그인 설치
+
+Windows PowerShell에서 아래 두 줄을 순서대로 실행합니다.
 
 ```powershell
 codex plugin marketplace add jetcar-dev/jetcar-ai
@@ -15,26 +39,11 @@ codex plugin add jetcar@jetcar-tools
 
 Codex를 다시 열고 새 채팅에서 **제트카** 플러그인을 선택합니다. 사용할 MCP의 초기 설정은 아래 **MCP 목록**에서 확인합니다.
 
-#### 처음 설치하는 PC
-
-- ChatGPT 데스크톱 앱을 설치하고 로그인한 뒤 **Codex**를 엽니다. [Windows 앱 다운로드](https://learn.chatgpt.com/docs/windows/windows-app#download-the-chatgpt-desktop-app)
-- PowerShell에서 `git --version`을 입력합니다. Git이 없다면 `winget install --id Git.Git --exact --source winget`으로 설치하고 PowerShell을 다시 엽니다. [Git 설치 파일](https://git-scm.com/install/windows)
-
-#### Codex CLI 설치
-
-PowerShell에서 `codex --version`을 입력합니다. 버전이 표시되면 위의 플러그인 설치 두 줄을 실행하면 됩니다. `codex` 명령을 찾을 수 없다고 나오면 아래 명령으로 CLI를 설치합니다. [OpenAI 공식 Windows 설치 안내](https://learn.chatgpt.com/docs/enterprise/windows-deployment#choose-an-installation-method)
-
-```powershell
-$codexInstaller = Join-Path $env:TEMP 'codex-install.ps1'
-Invoke-WebRequest -UseBasicParsing -Uri 'https://chatgpt.com/codex/install.ps1' -OutFile $codexInstaller
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File $codexInstaller
-```
-
-설치가 끝나면 PowerShell을 닫았다가 다시 엽니다. `codex --version`으로 확인한 뒤 위의 플러그인 설치 두 줄을 실행합니다.
-
 ### 업데이트
 
-새 버전을 받으려면 PowerShell에서 아래 명령을 실행하고 Codex를 다시 엽니다.
+Codex 화면에서 설치했다면 새 ZIP을 받아 압축을 푼 폴더를 열고 플러그인 화면에서 새 버전을 확인합니다.
+
+PowerShell에서 설치했다면 아래 명령을 실행하고 Codex를 다시 엽니다.
 
 ```powershell
 codex plugin marketplace upgrade jetcar-tools

@@ -1,12 +1,15 @@
+import {execFile} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {mkdir, readFile, readdir, rename, rm, stat, writeFile} from 'node:fs/promises';
 import {homedir} from 'node:os';
 import {join} from 'node:path';
+import {promisify} from 'node:util';
 import {z} from 'zod';
 
 export const browsers = ['chrome', 'edge'] as const;
 export type BrowserName = typeof browsers[number];
 const extensionId = 'mmlmfjhmonkocbjadbfplnigmagldckm';
+const runFile = promisify(execFile);
 const connectionSchema = z.object({
     profile: z.string().min(1).regex(/^[^/\\\x00-\x1f]+$/).refine((value) => value !== '.' && value !== '..'),
     token: z.string().regex(/^[A-Za-z0-9_-]{20,200}$/),
@@ -49,6 +52,27 @@ export async function extensionProfiles(browser: BrowserName) {
         return extension?.isDirectory() ? name : undefined;
     }));
     return profiles.filter((name) => name !== undefined).sort();
+}
+
+export async function lastUsedProfile(browser: BrowserName, profiles: string[]) {
+    if (profiles.length === 1) return profiles[0];
+    const state = await readFile(join(userDataDirectory(browser), 'Local State'), 'utf8')
+        .then((raw) => JSON.parse(raw)).catch(() => undefined);
+    const lastUsed = state?.profile?.last_used;
+    return profiles.includes(lastUsed) ? lastUsed as string : profiles[0];
+}
+
+export async function browserExecutable(browser: BrowserName) {
+    const override = process.env.NAVER_PLAYWRIGHT_EXECUTABLE_PATH?.trim();
+    if (override || process.platform !== 'win32') return override;
+    const reg = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'reg.exe');
+    const executable = browser === 'chrome' ? 'chrome.exe' : 'msedge.exe';
+    for (const hive of ['HKCU', 'HKLM']) {
+        const key = `${hive}\\Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\${executable}`;
+        const result = await runFile(reg, ['query', key, '/ve'], {windowsHide: true}).catch(() => undefined);
+        const file = /\bREG_SZ\s+([^\r\n]+)/.exec(result?.stdout ?? '')?.[1].trim().replace(/^"|"$/g, '');
+        if (file && (await stat(file).catch(() => undefined))?.isFile()) return file;
+    }
 }
 
 export async function loadBrowserConnection(browser: BrowserName) {

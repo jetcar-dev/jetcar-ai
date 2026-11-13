@@ -1,11 +1,27 @@
 import {z} from 'zod';
-import {cafeHeaders, createCafeReadRequest} from '../shared/naver-request.js';
+import {cafeHeaders, createCafeReadRequest, type CafeRequest} from '../shared/naver-request.js';
 import {toolResult} from '../shared/tool-result.js';
-import {browsers} from './browser-connection.js';
+import {browsers, type BrowserName} from './browser-connection.js';
 import {readExtensionSession} from './playwright-extension.js';
 import type {McpServer} from '@modelcontextprotocol/server';
 
 const identifierUrl = 'https://apis.naver.com/cafe-home-web/cafe-home/v1/member/identifier';
+
+export function needsNaverLogin(browser: BrowserName) {
+    return {status: 'needs_naver_login', loggedIn: false, browser,
+        message: '연결한 Chrome 또는 Edge에서 네이버에 로그인한 뒤 다시 요청하세요.'};
+}
+
+export async function isNaverLoggedIn(request: CafeRequest) {
+    const response = await request(identifierUrl, {headers: cafeHeaders});
+    const data = await response.json().catch(() => null);
+    if (response.status === 401 || String(data?.error?.errorCode) === '10004') return false;
+    const loggedIn = data?.message?.result?.loggedIn;
+    if (!response.ok || typeof loggedIn !== 'boolean') {
+        throw new Error(`네이버 로그인 상태를 확인하지 못했습니다 (HTTP ${response.status}).`);
+    }
+    return loggedIn;
+}
 
 export function registerCheckLogin(server: McpServer) {
     server.registerTool('check_cafe_login', {
@@ -18,20 +34,11 @@ export function registerCheckLogin(server: McpServer) {
     }, async ({browser}, {mcpReq: {signal}}) => {
         const session = await readExtensionSession(browser, false, signal);
         if (!('loginHeaderFor' in session) || !session.loginHeaderFor) return toolResult(session);
-        let loggedIn = false;
-        if (session.loginHeaderFor('apis.naver.com')) {
-            const request = createCafeReadRequest(session.loginHeaderFor, signal);
-            const response = await request(identifierUrl, {headers: cafeHeaders});
-            const data = await response.json().catch(() => null);
-            if (response.status !== 401 && String(data?.error?.errorCode) !== '10004') {
-                if (!response.ok || typeof data?.message?.result?.loggedIn !== 'boolean') {
-                    throw new Error(`네이버 로그인 상태를 확인하지 못했습니다 (HTTP ${response.status}).`);
-                }
-                loggedIn = data.message.result.loggedIn;
-            }
-        }
-        const status = loggedIn ? 'logged_in' : 'needs_naver_login';
-        const message = loggedIn ? '네이버 로그인 상태가 유효합니다.' : '연결된 브라우저 프로필에서 네이버에 로그인하세요.';
-        return toolResult({status, loggedIn, browser: session.name, message}, message);
+        const request = createCafeReadRequest(session.loginHeaderFor, signal);
+        const loggedIn = !!session.loginHeaderFor('apis.naver.com') && await isNaverLoggedIn(request);
+        const result = loggedIn
+            ? {status: 'logged_in', loggedIn, browser: session.name, message: '네이버 로그인 상태가 유효합니다.'}
+            : needsNaverLogin(session.name);
+        return toolResult(result, result.message);
     });
 }

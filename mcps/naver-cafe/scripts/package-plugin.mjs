@@ -10,6 +10,7 @@ const pluginMcp = fileURLToPath(new URL('../../../plugins/jetcar/mcps/naver-cafe
 const staging = await mkdtemp(join(tmpdir(), 'jetcar-naver-cafe-package-'));
 const archive = join(pluginMcp, 'runtime.tar.gz');
 const pendingArchive = join(pluginMcp, `.runtime-${randomUUID()}.tmp`);
+const tar = process.platform === 'win32' ? join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
 
 function run(command, args, cwd) {
     const result = spawnSync(command, args, {cwd, stdio: 'inherit', windowsHide: true});
@@ -25,7 +26,7 @@ try {
     }
     run(process.execPath, [npm, 'run', 'build', '--', '--outDir', join(staging, 'dist')], project);
     run(process.execPath, [npm, 'ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund'], staging);
-    run('tar', ['-czf', pendingArchive, '--exclude=node_modules/.bin', '--exclude=node_modules/.package-lock.json',
+    run(tar, ['-czf', pendingArchive, '--exclude=node_modules/.bin', '--exclude=node_modules/.package-lock.json',
         'package.json', 'node_modules', 'dist/server.js',
         'dist/auth', 'dist/boards', 'dist/drafts', 'dist/shared'], staging);
     await rename(pendingArchive, archive);

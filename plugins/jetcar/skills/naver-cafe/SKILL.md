@@ -12,7 +12,7 @@ description: 제트카 네이버 카페의 로그인·게시판·임시글을 �
 | 요청 | 처리 |
 | --- | --- |
 | 로그인 상태 확인 | `check_cafe_login`을 호출한다. 다른 도구는 자체적으로 연결 상태를 확인한다. |
-| 게시판 조회 | `list_cafe_boards`의 `menuTree` 순서를 따르고, 하위 게시판은 그룹 아래에 들여쓴다. 게시판 이름과 번호를 함께 보여준다. |
+| 게시판 조회 | `list_cafe_boards`를 호출해 로그인한 계정에 보이는 게시판을 조회한다. `menuTree` 순서를 따르고 하위 게시판은 그룹 아래에 들여쓴다. 게시판 이름과 번호를 함께 보여준다. |
 | 임시글 조회 | `list_cafe_drafts`에서 제목, 게시판, 저장 시간을 보여준다. 게시판 링크를 넘겨도 조회 범위는 카페 전체이므로 특정 게시판 요청은 반환된 목록에서 거른다. |
 | 글 작성·미리보기 | 작성한 제목과 본문을 채팅에 보여준다. |
 | 새 임시글 저장 | 아래 절차를 따라 `save_cafe_draft`를 호출한다. |
@@ -31,12 +31,15 @@ description: 제트카 네이버 카페의 로그인·게시판·임시글을 �
 
 ## 도구 응답 처리
 
+브라우저 연결이 처음 필요하면 MCP 호출 중에 Playwright Extension 연결 화면이 열린다. 사용자에게 로그인된 카페 탭을 선택하고 **Allow**를 누르도록 안내한다. 연결된 동안 같은 브라우저를 사용한다.
+
 | 응답 | 조치 |
 | --- | --- |
 | `needs_cafe_url`, `needs_board_url` | 필요한 카페 홈 또는 게시판 링크를 요청한다. 게시판 이름이나 번호를 이미 알고 있다면 조회로 찾을 수 있는지 먼저 확인한다. |
 | `needs_browser_choice` | 도구의 선택지를 보여주고, 선택한 값을 후속 호출의 `browser`에 사용한다. |
 | `needs_naver_login` | 도구가 지정한 Chrome 또는 Edge 프로필에서 네이버에 로그인하도록 안내한다. |
-| `needs_playwright_extension`, `needs_browser_setup`, `extension_connection_failed` | 도구의 설치·연결 안내를 전달한다. 토큰 입력은 로컬 PowerShell의 연결 명령에서 처리한다. |
+| `needs_playwright_extension` | 네이버에 로그인한 브라우저에 [Playwright Extension](https://chromewebstore.google.com/detail/playwright-extension/mmlmfjhmonkocbjadbfplnigmagldckm)을 설치하도록 안내한다. |
+| `extension_connection_failed` | 도구의 안내에 따라 요청을 다시 실행하고 브라우저의 연결 화면에서 **Allow**를 누르도록 안내한다. |
 | 사진 파일 오류 | 오류에 해당하는 파일명이나 폴더를 바로잡은 뒤 사용자가 요청한 사진으로 진행한다. |
 | 쓰기 권한 오류 | 대상 게시판과 선택한 계정에 글쓰기 권한이 있는지 확인한다. 다른 게시판은 사용자가 지정했을 때 사용한다. |
 | `saved_as_draft` | 저장된 제목과 게시판, 임시글 ID를 알려준다. 사진을 넣었으면 반환된 장수와 대표사진 번호를 함께 전한다. 사용자는 카페 글쓰기의 **임시등록**에서 열 수 있다. |

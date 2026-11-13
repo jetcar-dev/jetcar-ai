@@ -3,15 +3,16 @@ import {dirname, join} from 'node:path';
 import {Client, SdkError, SdkErrorCode} from '@modelcontextprotocol/client';
 import {StdioClientTransport} from '@modelcontextprotocol/client/stdio';
 import {resolveCafeTarget, type CafeTarget} from '../boards/target.js';
-import {browsers, customUserDataDirectory, extensionProfiles, loadBrowserConnection, type BrowserName} from './browser-connection.js';
+import {browserExecutable, browsers, customUserDataDirectory, extensionProfiles, lastUsedProfile, loadBrowserConnection,
+    type BrowserName} from './browser-connection.js';
 
 const playwrightCli = join(dirname(createRequire(import.meta.url).resolve('@playwright/mcp/package.json')), 'cli.js');
 const cookieNames = ['NID_AUT', 'NID_SES'] as const;
 const cookieDomains = new Set(['naver.com', 'cafe.naver.com', 'apis.cafe.naver.com']);
-const setupCommand = process.env.JETCAR_NAVER_CAFE_SETUP_COMMAND ?? 'npm run setup:browser';
 type ExtensionTool = (name: string, args: Record<string, unknown>) => Promise<string>;
 type Connection = {key: string; client: Client; ready: Promise<void>; pending: Promise<void>; used: boolean};
 const connections = new Map<BrowserName, Connection>();
+const rejectedTokens = new Map<BrowserName, string>();
 
 async function disconnect(name: BrowserName, connection: Connection) {
     if (connections.get(name) !== connection) return;
@@ -23,10 +24,9 @@ export async function closeExtensionConnections() {
     await Promise.all([...connections].map(([name, connection]) => disconnect(name, connection)));
 }
 
-function getConnection(name: BrowserName, profile: string, token: string) {
-    const executable = process.env.NAVER_PLAYWRIGHT_EXECUTABLE_PATH?.trim();
+function getConnection(name: BrowserName, profile: string, token?: string) {
     const customDataDirectory = customUserDataDirectory(name);
-    const key = JSON.stringify([profile, token, executable, customDataDirectory]);
+    const key = JSON.stringify([profile, token, customDataDirectory]);
     const current = connections.get(name);
     if (current?.key === key) return current;
 
@@ -35,17 +35,17 @@ function getConnection(name: BrowserName, profile: string, token: string) {
         const value = process.env[key];
         if (value) env[key] = value;
     }
-    env.PLAYWRIGHT_MCP_EXTENSION_TOKEN = token;
-    const args = [playwrightCli, '--extension', '--caps=storage', '--no-tab-group', '--codegen=none',
-        '--browser', name === 'chrome' ? 'chrome' : 'msedge', '--profile-dir-name', profile];
-    if (executable) args.push('--executable-path', executable);
-    if (customDataDirectory) args.push('--user-data-dir', customDataDirectory);
-    const transport = new StdioClientTransport({command: process.execPath, args, env, stderr: 'ignore'});
+    if (token) env.PLAYWRIGHT_MCP_EXTENSION_TOKEN = token;
     const client = new Client({name: 'naver-cafe', version: '0.1.0'});
     const closing = current && disconnect(name, current);
-    const ready = Promise.resolve(closing).then(() => {
+    const ready = Promise.resolve(closing).then(async () => {
+        const executable = await browserExecutable(name);
         if (connections.get(name)?.client !== client) throw new Error('Playwright connection was replaced');
-        return client.connect(transport);
+        const args = [playwrightCli, '--extension', '--caps=storage', '--no-tab-group', '--codegen=none',
+            '--browser', name === 'chrome' ? 'chrome' : 'msedge', '--profile-dir-name', profile];
+        if (executable) args.push('--executable-path', executable);
+        if (customDataDirectory) args.push('--user-data-dir', customDataDirectory);
+        return client.connect(new StdioClientTransport({command: process.execPath, args, env, stderr: 'ignore'}));
     });
     const connection = {key, client, ready, pending: Promise.resolve(), used: false};
     connections.set(name, connection);
@@ -57,29 +57,24 @@ function getConnection(name: BrowserName, profile: string, token: string) {
 
 async function selectBrowser(choice: BrowserName | undefined) {
     const names = choice ? [choice] : browsers;
-    const setupMessage = `터미널에서 ${setupCommand} 명령을 실행해 사용할 브라우저 프로필을 한 번 연결하세요.`;
-    const saved = await Promise.all(names.map(async (name) => {
-        const config = await loadBrowserConnection(name).catch(() => null);
-        return {name, config};
-    }));
-    const configured = saved.flatMap(({name, config}) => config ? [{name, ...config}] : []);
-    const ask = (names: BrowserName[]) => ({
-        status: 'needs_browser_choice', choices: names,
-        question: 'Chrome과 Edge 중 어느 브라우저의 네이버 계정을 사용할까요?',
-    });
-    if (configured.length > 1) return ask(configured.map(({name}) => name));
-    if (configured.length === 1) return configured[0];
-
     const legacyProfile = process.env.PLAYWRIGHT_MCP_PROFILE_DIR_NAME?.trim();
-    const installed = (await Promise.all(names.map(async (name) => ({name, profiles: await extensionProfiles(name)}))))
-        .filter(({profiles}) => legacyProfile ? profiles.includes(legacyProfile) : profiles.length > 0);
-    if (installed.length > 1) return ask(installed.map(({name}) => name));
-    const [selected] = installed;
-    const token = process.env.PLAYWRIGHT_MCP_EXTENSION_TOKEN?.trim();
-    const profile = legacyProfile ?? (selected?.profiles.length === 1 ? selected.profiles[0] : undefined);
-    if (selected && token && profile) return {name: selected.name, profile, token};
-    const browser = selected?.name ?? saved.find(({config}) => config === null)?.name;
-    if (browser) return {status: 'needs_browser_setup', browser, message: setupMessage};
+    const legacyToken = process.env.PLAYWRIGHT_MCP_EXTENSION_TOKEN?.trim();
+    const available = (await Promise.all(names.map(async (name) => {
+        const [saved, profiles] = await Promise.all([
+            loadBrowserConnection(name).catch(() => undefined), extensionProfiles(name),
+        ]);
+        if (saved && profiles.includes(saved.profile)) return {name, ...saved};
+        if (legacyProfile && profiles.includes(legacyProfile)) return {name, profile: legacyProfile, token: legacyToken};
+        const profile = profiles.length ? await lastUsedProfile(name, profiles) : undefined;
+        if (profile) return {name, profile, token: profiles.length === 1 ? legacyToken : undefined};
+    }))).filter((option) => option !== undefined);
+    const connected = available.filter(({name}) => connections.get(name)?.used);
+    if (connected.length === 1) return connected[0];
+    if (available.length > 1) return {
+        status: 'needs_browser_choice', choices: available.map(({name}) => name),
+        question: 'Chrome과 Edge 중 어느 브라우저의 네이버 계정을 사용할까요?',
+    };
+    if (available.length === 1) return available[0];
     return {
         status: 'needs_playwright_extension',
         message: '네이버에 로그인한 Chrome 또는 Edge에 Playwright Extension을 설치한 뒤 다시 시도하세요.',
@@ -93,8 +88,9 @@ async function withPlaywrightExtension<T>(choice: BrowserName | undefined,
     signal?.throwIfAborted();
     const selected = await selectBrowser(choice);
     signal?.throwIfAborted();
-    if (!('token' in selected)) return selected;
-    const {name, profile, token} = selected;
+    if (!('name' in selected) || !selected.name) return selected;
+    const {name, profile} = selected;
+    const token = selected.token === rejectedTokens.get(name) ? undefined : selected.token;
     const run = (connection: Connection) => {
         const read = connection.pending.then(async () => {
             await connection.ready;
@@ -102,7 +98,7 @@ async function withPlaywrightExtension<T>(choice: BrowserName | undefined,
             if (connections.get(name) !== connection) throw new Error('Playwright connection was replaced');
             const value = await use(async (tool, parameters) => {
                 const result = await connection.client.callTool({name: tool, arguments: {...parameters, _meta: {raw: true}}},
-                    {timeout: 30_000, signal});
+                    {timeout: connection.used || token ? 30_000 : 55_000, signal});
                 if (result.isError) throw new Error('Playwright extension tool failed');
                 return result.content.flatMap((item) => item.type === 'text' ? [item.text] : []).join('\n');
             }, name);
@@ -116,7 +112,10 @@ async function withPlaywrightExtension<T>(choice: BrowserName | undefined,
     try {
         return await run(connection);
     } catch (error) {
-        signal?.throwIfAborted();
+        if (signal?.aborted) {
+            if (!connection.used) await disconnect(name, connection);
+            signal.throwIfAborted();
+        }
         await disconnect(name, connection);
         const replacement = connections.get(name);
         if (connection.used && (!replacement || replacement.key === connection.key) &&
@@ -126,13 +125,14 @@ async function withPlaywrightExtension<T>(choice: BrowserName | undefined,
             try {
                 return await run(connection);
             } catch {
-                signal?.throwIfAborted();
                 await disconnect(name, connection);
+                signal?.throwIfAborted();
             }
         }
+        if (token) rejectedTokens.set(name, token);
         return {
             status: 'extension_connection_failed', browser: name,
-            message: `Playwright 확장 연결을 완료하지 못했습니다. 연결 토큰을 바꿨다면 ${setupCommand} 명령으로 다시 연결하세요.`,
+            message: '브라우저의 Playwright Extension 연결을 완료하지 못했습니다. 다시 요청한 뒤 연결 화면에서 네이버 카페 탭을 선택하고 Allow를 누르세요.',
         };
     }
 }

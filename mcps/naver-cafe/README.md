@@ -5,18 +5,11 @@ Chrome 또는 Edge의 네이버 로그인 세션을 사용해 카페 게시판�
 ## 플러그인에서 사용하기
 
 1. [제트카 플러그인](../../README.md#설치-및-업데이트)을 설치합니다.
-2. PowerShell에서 아래 명령으로 **Node.js LTS**를 설치합니다. `node --version` 결과가 `v22` 이상이면 건너뜁니다. 설치 후 PowerShell과 Codex를 다시 열고 버전을 확인합니다. [Node.js 설치 파일](https://nodejs.org/en/download)
+2. Windows용 **Node.js LTS** 설치 파일(`.msi`)을 내려받아 실행하고 Codex를 다시 엽니다. 이미 Node.js 22 이상이 설치되어 있으면 이 단계는 건너뜁니다. [Node.js 다운로드](https://nodejs.org/en/download)
+3. 평소 쓰는 Chrome 또는 Edge에서 네이버에 로그인하고 카페를 열어둡니다. 같은 브라우저에 확장을 설치합니다. Edge가 다른 스토어의 확장을 허용할지 물으면 **허용**을 누릅니다. [Playwright Extension 설치](https://chromewebstore.google.com/detail/playwright-extension/mmlmfjhmonkocbjadbfplnigmagldckm)
+4. Codex에서 **제트카** 플러그인을 선택하고 “제트카 카페 게시판 목록 보여줘”라고 입력합니다. 브라우저 연결 화면이 뜨면 로그인된 네이버 카페 탭을 선택하고 **Allow**(허용)를 누릅니다.
 
-   ```powershell
-   winget install --id OpenJS.NodeJS.LTS --exact --source winget
-   ```
-
-3. 사용할 Chrome 또는 Edge 프로필에서 네이버에 로그인하고 확장을 설치합니다. Edge에서 Chrome 웹 스토어를 열었을 때 다른 스토어의 확장 허용을 묻는다면 **허용**을 누릅니다. [Playwright Extension 설치](https://chromewebstore.google.com/detail/playwright-extension/mmlmfjhmonkocbjadbfplnigmagldckm)
-4. Codex에서 **제트카** 플러그인을 선택하고 “네이버 카페 로그인 상태 확인해줘”라고 입력합니다. 처음 연결할 때는 Codex가 안내하는 `--setup-browser` 명령을 PowerShell에 붙여넣습니다.
-5. 사용할 브라우저 프로필을 고릅니다. 그 프로필에서 Playwright Extension 아이콘을 누르고 토큰 옆 복사 버튼을 클릭한 뒤, PowerShell의 토큰 입력 칸에 붙여넣고 Enter를 누릅니다. 연결 정보는 각자 PC에 저장됩니다.
-6. Codex에서 “네이버 카페 로그인 상태 확인해줘”를 다시 입력합니다. 연결되면 “제트카 카페 게시판 목록 보여줘”로 확인할 수 있습니다.
-
-토큰을 재발급하거나 브라우저 프로필을 바꾸면 4~5단계를 다시 진행합니다.
+게시판 목록에는 로그인한 계정이 볼 수 있는 게시판이 표시됩니다. 연결이 끊겨 허용 화면이 다시 열리면 같은 방식으로 승인합니다.
 
 사진은 `%LOCALAPPDATA%\Jetcar\NaverCafeMcp\photos`에 넣고 파일 이름을 알려주세요. 저장한 글은 네이버 카페 글쓰기 화면의 **임시등록**에서 확인할 수 있습니다.
 
@@ -37,10 +30,11 @@ Chrome 또는 Edge의 네이버 로그인 세션을 사용해 카페 게시판�
 
 ```powershell
 codex mcp add naver-cafe -- node (Resolve-Path ./dist/server.js).Path
-npm run setup:browser
 ```
 
 단독 MCP 설정은 이 폴더의 `.env`에 입력합니다. `NAVER_CAFE_ID`는 기본 카페, `NAVER_BOARD_URL`은 기본 게시판입니다. 사진을 첨부하려면 `NAVER_IMAGE_DIR`에 폴더의 절대 경로를 입력합니다. 기본 설치 경로와 다른 브라우저는 `NAVER_PLAYWRIGHT_EXECUTABLE_PATH`로 지정할 수 있습니다.
+
+개발 환경에서 브라우저 재연결 시 허용 화면을 건너뛰려면 `npm run setup:browser`로 Playwright Extension 토큰을 등록할 수 있습니다.
 
 플러그인에 변경한 MCP를 넣으려면 `npm run package:plugin`을 실행합니다. 배포 파일은 [플러그인의 네이버 카페 폴더](../../plugins/jetcar/mcps/naver-cafe/)에 생성됩니다.
 
