@@ -101,6 +101,12 @@ export const editorBlock = z.discriminatedUnion('type', [
         caption: z.string().trim().min(1).max(5_000).optional(),
         link: linkUrl.optional(),
     }),
+    z.object({
+        type: z.literal('video'),
+        file: z.string().min(1).max(255).describe('사진과 같은 폴더에 있는 MP4 파일 이름입니다.'),
+        title: z.string().trim().min(1).max(40).optional(),
+        align: align.optional(),
+    }),
 ]);
 
 type Format = {[K in keyof typeof format]?: z.infer<(typeof format)[K]>};
@@ -118,6 +124,7 @@ export function blockTextLength(block: Block): number {
         case 'table': return block.rows.flat().reduce((count, cell) =>
             count + (typeof cell === 'string' ? cell.length : textLength(cell)), 0);
         case 'image': return block.caption?.length ?? 0;
+        case 'video': return block.title?.length ?? 0;
         default: return 0;
     }
 }
@@ -159,7 +166,7 @@ const quotationLayouts = {
     6: 'quotation_corner',
 } as const;
 
-export function editorComponent(block: Exclude<Block, {type: 'image'}>) {
+export function editorComponent(block: Exclude<Block, {type: 'image' | 'video'}>) {
     switch (block.type) {
         case 'text': {
             const {type, ...text} = block;

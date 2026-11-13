@@ -1,5 +1,8 @@
 export type CafeRequest = (url: string | URL, options?: RequestInit) => Promise<Response>;
 export const cafeHeaders = {'X-Cafe-Product': 'pc'};
+const cafeReadOrigins = new Set([
+    'https://cafe.naver.com', 'https://apis.naver.com', 'https://apis.cafe.naver.com', 'https://article.cafe.naver.com',
+]);
 
 function requestHeaders(options: RequestInit) {
     const headers = new Headers(options.headers);
@@ -12,8 +15,7 @@ function requestHeaders(options: RequestInit) {
 export function createCafeReadRequest(loginHeaderFor: (hostname: string) => string | undefined, signal?: AbortSignal): CafeRequest {
     return (input, options = {}) => {
         const url = new URL(input);
-        const hosts = ['https://cafe.naver.com', 'https://apis.naver.com', 'https://apis.cafe.naver.com'];
-        if (!hosts.includes(url.origin) || url.username || url.password) {
+        if (!cafeReadOrigins.has(url.origin) || url.username || url.password) {
             throw new Error('네이버 카페 조회 주소를 확인할 수 없습니다.');
         }
         const headers = requestHeaders(options);

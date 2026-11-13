@@ -28,7 +28,7 @@ try {
     run(process.execPath, [npm, 'ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund'], staging);
     run(tar, ['-czf', pendingArchive, '--exclude=node_modules/.bin', '--exclude=node_modules/.package-lock.json',
         'package.json', 'node_modules', 'dist/server.js',
-        'dist/auth', 'dist/boards', 'dist/drafts', 'dist/shared'], staging);
+        'dist/auth', 'dist/boards', 'dist/articles', 'dist/drafts', 'dist/shared'], staging);
     await rename(pendingArchive, archive);
     console.log(archive);
 } finally {

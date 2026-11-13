@@ -1,6 +1,6 @@
 {
   "name": "@jetcar/jetcar-ai",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Installs the Jetcar plugin in Codex Desktop on Windows",
   "type": "module",
   "bin": { "jetcar-ai": "install.mjs" },

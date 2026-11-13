@@ -3,6 +3,7 @@ import type {CafeTarget} from '../boards/target.js';
 import type {loadImages} from './images.js';
 import {cafeHeaders, type CafeRequest} from '../shared/naver-request.js';
 import {editorBlock, editorComponent, editorId, paragraphs} from './editor-blocks.js';
+import {maxVideos, uploadVideo, type VideoFile} from './videos.js';
 
 const editorApi = 'https://apis.cafe.naver.com/editor';
 const serviceConfig = 'https://platform.editor.naver.com/api/cafepc001/v1/service_config';
@@ -69,11 +70,8 @@ async function editorInfo(request: CafeRequest, target: CafeTarget) {
     return info.result;
 }
 
-async function photoSession(request: CafeRequest, token: unknown) {
-    if (typeof token !== 'string' || !token) throw new Error('카페 글쓰기 설정에 스마트에디터 토큰이 없습니다.');
-    const editorHeaders = {'SE-Authorization': token};
-    const data = await readJson(request, serviceConfig, editorHeaders, '스마트에디터 설정 조회');
-    const config = configSchema.safeParse(data);
+async function photoSession(request: CafeRequest, settings: unknown, editorHeaders: HeadersInit) {
+    const config = configSchema.safeParse(settings);
     if (!config.success) throw new Error('스마트에디터 설정에서 사진 업로드 정보를 찾을 수 없습니다.');
     const {domain, imageHost} = config.data.infraInfo.photoInfra;
     const sessionUrl = naverUrl(config.data.apiInfo.fetchPhotoUploadSessionKey, serviceConfig);
@@ -150,7 +148,9 @@ export async function readDraft(request: CafeRequest, target: CafeTarget, tempor
 
 export async function saveSmartEditorDraft(
     target: CafeTarget, title: string | undefined, blocks: Block[], photos: Photo[], request: CafeRequest,
-    {temporaryArticleId, representativeImage}: {temporaryArticleId?: DraftId; representativeImage?: number} = {},
+    {temporaryArticleId, representativeImage, videos = [], signal}: {
+        temporaryArticleId?: DraftId; representativeImage?: number; videos?: VideoFile[]; signal?: AbortSignal;
+    } = {},
 ) {
     const existing = temporaryArticleId === undefined ? undefined : await readDraft(request, target, temporaryArticleId);
     const subject = title ?? existing?.article.subject;
@@ -158,6 +158,9 @@ export async function saveSmartEditorDraft(
     const oldComponents = existing?.content.document.components ?? [];
     const oldImages = oldComponents.filter((component) => component['@ctype'] === 'image');
     const imageCount = oldImages.length + blocks.filter((block) => block.type === 'image').length;
+    const videoCount = oldComponents.filter((component) => component['@ctype'] === 'video').length +
+        blocks.filter((block) => block.type === 'video').length;
+    if (videos.length && videoCount > maxVideos) throw new Error(`한 글에 동영상을 최대 ${maxVideos}개 첨부할 수 있습니다.`);
     if (representativeImage !== undefined && representativeImage > imageCount) {
         throw new Error(imageCount ? `대표이미지는 본문 사진의 순서로 1~${imageCount} 사이에서 선택하세요.`
             : '대표이미지를 지정하려면 본문에 사진이 있어야 합니다.');
@@ -166,20 +169,47 @@ export async function saveSmartEditorDraft(
     const selected = representativeImage ?? (existingRepresentative < 0 ? 1 : existingRepresentative + 1);
     const info = await editorInfo(request, target);
     const uploaded = new Map<string, Awaited<ReturnType<typeof uploadPhoto>>>();
-    if (photos.length) {
-        const session = await photoSession(request, info?.token);
-        const batchSize = 3;
-        for (let offset = 0; offset < photos.length; offset += batchSize) {
-            const batch = photos.slice(offset, offset + batchSize);
-            const results = await Promise.allSettled(batch.map(async (photo, index) => {
-                uploaded.set(photo.name, await uploadPhoto(request, photo, session, offset + index));
-            }));
-            for (const result of results) {
-                if (result.status === 'rejected') throw result.reason;
+    const uploadedVideos = new Map<string, Awaited<ReturnType<typeof uploadVideo>>>();
+    if (photos.length || videos.length) {
+        if (typeof info?.token !== 'string' || !info.token) {
+            throw new DraftPreparationError('카페 글쓰기 설정에 스마트에디터 토큰이 없습니다.');
+        }
+        const editorHeaders = {'SE-Authorization': info.token};
+        try {
+            const settings = await readJson(request, serviceConfig, editorHeaders, '스마트에디터 설정 조회');
+            if (photos.length) {
+                const session = await photoSession(request, settings, editorHeaders);
+                const batchSize = 3;
+                for (let offset = 0; offset < photos.length; offset += batchSize) {
+                    const batch = photos.slice(offset, offset + batchSize);
+                    const results = await Promise.allSettled(batch.map(async (photo, index) => {
+                        uploaded.set(photo.name, await uploadPhoto(request, photo, session, offset + index));
+                    }));
+                    const failure = results.find((result) => result.status === 'rejected');
+                    if (failure) throw failure.reason;
+                }
             }
+            for (const video of videos) {
+                uploadedVideos.set(video.name, await uploadVideo(request, video, settings, editorHeaders, signal));
+            }
+        } catch (error) {
+            signal?.throwIfAborted();
+            const message = error instanceof Error && !(error instanceof z.ZodError) ? error.message :
+                '스마트에디터 첨부 파일 처리 결과를 확인할 수 없습니다.';
+            throw new DraftPreparationError(message, {cause: error});
         }
     }
-    const appended = blocks.map((block) => {
+
+    const appended: z.infer<typeof draftComponent>[] = blocks.map((block) => {
+        if (block.type === 'video') {
+            const video = uploadedVideos.get(block.file);
+            if (!video) throw new Error(`첨부할 동영상을 찾지 못했습니다: ${block.file}`);
+            return {
+                ...video, id: editorId(),
+                ...(block.align && {align: block.align}),
+                ...(block.title && {mediaMeta: {'@ctype': 'mediaMeta', title: block.title, description: '', tags: []}}),
+            };
+        }
         if (block.type !== 'image') return editorComponent(block);
         const photo = uploaded.get(block.file);
         if (!photo) throw new Error(`첨부할 사진을 찾지 못했습니다: ${block.file}`);
@@ -192,9 +222,11 @@ export async function saveSmartEditorDraft(
         };
     });
     let imageIndex = 0;
-    const components = [...oldComponents, ...appended].map((component) => component['@ctype'] === 'image'
-        ? {...component, represent: ++imageIndex === selected}
-        : component);
+    const components = [...oldComponents, ...appended].map((component) => {
+        if (component['@ctype'] === 'image') return {...component, represent: ++imageIndex === selected};
+        if (component['@ctype'] === 'video' && imageCount && component.represent) return {...component, represent: false};
+        return component;
+    });
     const content = existing?.content ?? {documentId: '', document: {version: '2.10.2', theme: 'default'}};
     const article = {
         ...info?.options,
@@ -212,7 +244,7 @@ export async function saveSmartEditorDraft(
     const data = await response?.json().catch(() => null);
     const result = draftId.safeParse(data?.result?.temporaryArticleId);
     if (response?.ok && result.success && (temporaryArticleId === undefined || String(result.data) === String(temporaryArticleId))) {
-        return {temporaryArticleId: result.data, imageCount, representativeImage: imageCount ? selected : undefined, title: subject};
+        return {temporaryArticleId: result.data, imageCount, videoCount, representativeImage: imageCount ? selected : undefined, title: subject};
     }
     if (response && response.status >= 400 && response.status < 500 && response.status !== 408) {
         const code = data?.error?.errorCode;

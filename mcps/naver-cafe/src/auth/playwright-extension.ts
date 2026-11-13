@@ -8,7 +8,7 @@ import {browserExecutable, browsers, customUserDataDirectory, extensionProfiles,
 
 const playwrightCli = join(dirname(createRequire(import.meta.url).resolve('@playwright/mcp/package.json')), 'cli.js');
 const cookieNames = ['NID_AUT', 'NID_SES'] as const;
-const cookieDomains = new Set(['naver.com', 'cafe.naver.com', 'apis.cafe.naver.com']);
+const cookieDomains = new Set(['naver.com', 'cafe.naver.com', 'apis.cafe.naver.com', 'article.cafe.naver.com']);
 type ExtensionTool = (name: string, args: Record<string, unknown>) => Promise<string>;
 type Connection = {key: string; profile: string; client: Client; ready: Promise<void>; pending: Promise<void>; used: boolean};
 const connections = new Map<BrowserName, Connection>();
