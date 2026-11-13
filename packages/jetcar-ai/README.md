@@ -3,7 +3,7 @@
 Windows에서 제트카 플러그인을 등록합니다. ChatGPT 데스크톱 앱에서 Codex를 한 번 열고, Node.js 22 이상을 설치한 뒤 PowerShell에서 실행합니다.
 
 ```powershell
-npx --yes --prefer-online @jetcar/jetcar-ai@latest
+cmd.exe /d /c npx --yes --prefer-online @jetcar/jetcar-ai@latest
 ```
 
 안내에 따라 설치 비밀번호를 입력하고 Enter를 누릅니다. 입력 내용은 화면에 표시되지 않습니다. 설치가 완료되면 Codex를 다시 열고 새 채팅에서 **제트카**를 선택합니다.

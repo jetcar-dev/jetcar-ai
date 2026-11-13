@@ -10,7 +10,7 @@
 2. PowerShell에서 아래 명령을 실행합니다.
 
    ```powershell
-   npx --yes --prefer-online @jetcar/jetcar-ai@latest
+   cmd.exe /d /c npx --yes --prefer-online @jetcar/jetcar-ai@latest
    ```
 
 3. 안내받은 설치 비밀번호를 입력하고 Enter를 누릅니다. 설치가 끝나면 Codex를 다시 열고 새 채팅에서 **제트카**를 선택합니다.
