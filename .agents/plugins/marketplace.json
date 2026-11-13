@@ -1,0 +1,12 @@
+{
+  "name": "jetcar-tools",
+  "interface": { "displayName": "제트카 도구" },
+  "plugins": [
+    {
+      "name": "jetcar",
+      "source": { "source": "local", "path": "./plugins/jetcar" },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Productivity"
+    }
+  ]
+}

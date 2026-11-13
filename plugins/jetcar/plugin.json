@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "jetcar",
+  "version": "0.1.4",
+  "description": "제트카 업무 자동화 도구",
+  "author": { "name": "제트카" },
+  "extensions": {
+    "com.openai": {
+      "requires_local_executor": true,
+      "interface": {
+        "displayName": "제트카",
+        "shortDescription": "제트카 업무 자동화",
+        "longDescription": "제트카 업무에 사용하는 MCP 도구와 스킬을 Codex에서 제공합니다.",
+        "developerName": "제트카",
+        "category": "Productivity",
+        "logo": "./assets/jetcar-symbol-logo.png",
+        "composerIcon": "./assets/jetcar-symbol-logo.png"
+      }
+    }
+  }
+}
