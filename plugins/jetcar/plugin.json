@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "jetcar",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "제트카 업무 자동화 도구",
   "author": { "name": "제트카" },
   "extensions": {
