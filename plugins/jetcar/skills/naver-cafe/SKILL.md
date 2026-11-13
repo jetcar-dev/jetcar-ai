@@ -5,7 +5,7 @@ description: 제트카 네이버 카페의 로그인·게시판·임시글을 �
 
 # 네이버 카페
 
-제트카 플러그인의 `naver-cafe` MCP를 사용한다.
+현재 채팅에 연결된 제트카 플러그인의 `naver-cafe` MCP 도구를 사용한다. 도구가 보이지 않으면 Codex를 다시 열고 새 채팅에서 제트카를 선택하도록 안내한다. 셸에서 플러그인 실행 파일을 별도로 띄우거나 브라우저 UI로 대신 처리하지 않는다.
 
 ## 요청에 맞는 도구
 
@@ -31,7 +31,7 @@ description: 제트카 네이버 카페의 로그인·게시판·임시글을 �
 
 ## 도구 응답 처리
 
-브라우저 연결이 처음 필요하면 MCP 호출 중에 Playwright Extension 연결 화면이 열린다. 사용자에게 로그인된 카페 탭을 선택하고 **Allow**를 누르도록 안내한다. 연결된 동안 같은 브라우저를 사용한다.
+브라우저 연결이 처음 필요하면 MCP 호출 중에 Playwright Extension 연결 화면이 열린다. 사용자에게 로그인된 카페 탭을 선택하고 **Allow**를 한 번 누르도록 안내한 뒤, 진행 중인 호출 결과를 기다린다. 게시판 조회에서 브라우저를 선택했다면 후속 임시저장에도 같은 `browser`를 전달한다. 재연결 요청이 진행 중인 작업과 관련 있으면 연결이 확인된 뒤 그 작업을 이어서 처리한다.
 
 | 응답 | 조치 |
 | --- | --- |
@@ -39,7 +39,8 @@ description: 제트카 네이버 카페의 로그인·게시판·임시글을 �
 | `needs_browser_choice` | 도구의 선택지를 보여주고, 선택한 값을 후속 호출의 `browser`에 사용한다. |
 | `needs_naver_login` | 도구가 지정한 Chrome 또는 Edge 프로필에서 네이버에 로그인하도록 안내한다. |
 | `needs_playwright_extension` | 네이버에 로그인한 브라우저에 [Playwright Extension](https://chromewebstore.google.com/detail/playwright-extension/mmlmfjhmonkocbjadbfplnigmagldckm)을 설치하도록 안내한다. |
-| `extension_connection_failed` | 도구의 안내에 따라 요청을 다시 실행하고 브라우저의 연결 화면에서 **Allow**를 누르도록 안내한다. |
+| `extension_connection_failed` | 이 요청의 후속 호출을 멈추고 끊긴 연결을 알린다. 사용자가 재연결을 요청하면 `check_cafe_login`에 `reconnect: true`를 전달하고, 연결 화면이 열리면 **Allow**를 한 번 누르도록 안내한다. |
+| `draft_preparation_failed` | 글쓰기 설정 조회에 실패해 임시저장 요청을 보내지 않았다고 안내한다. 같은 저장을 반복하거나 저장 여부를 확인하려고 목록을 다시 조회하지 않는다. |
 | 사진 파일 오류 | 오류에 해당하는 파일명이나 폴더를 바로잡은 뒤 사용자가 요청한 사진으로 진행한다. |
 | 쓰기 권한 오류 | 대상 게시판과 선택한 계정에 글쓰기 권한이 있는지 확인한다. 다른 게시판은 사용자가 지정했을 때 사용한다. |
 | `saved_as_draft` | 저장된 제목과 게시판, 임시글 ID를 알려준다. 사진을 넣었으면 반환된 장수와 대표사진 번호를 함께 전한다. 사용자는 카페 글쓰기의 **임시등록**에서 열 수 있다. |

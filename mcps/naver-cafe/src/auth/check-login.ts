@@ -29,10 +29,11 @@ export function registerCheckLogin(server: McpServer) {
         description: '연결된 Chrome 또는 Edge 프로필의 로그인 상태가 네이버에서 아직 유효한지 확인합니다.',
         inputSchema: z.object({
             browser: z.enum(browsers).optional().describe('사용자가 선택한 브라우저. 선택을 모르면 생략합니다.'),
+            reconnect: z.boolean().optional().describe('사용자가 브라우저 재연결을 요청했을 때만 true를 전달합니다.'),
         }),
         annotations: {readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true},
-    }, async ({browser}, {mcpReq: {signal}}) => {
-        const session = await readExtensionSession(browser, false, signal);
+    }, async ({browser, reconnect}, {mcpReq: {signal}}) => {
+        const session = await readExtensionSession(browser, false, signal, reconnect);
         if (!('loginHeaderFor' in session) || !session.loginHeaderFor) return toolResult(session);
         const request = createCafeReadRequest(session.loginHeaderFor, signal);
         const loggedIn = !!session.loginHeaderFor('apis.naver.com') && await isNaverLoggedIn(request);

@@ -1,6 +1,6 @@
 import {createRequire} from 'node:module';
 import {dirname, join} from 'node:path';
-import {Client, SdkError, SdkErrorCode} from '@modelcontextprotocol/client';
+import {Client} from '@modelcontextprotocol/client';
 import {StdioClientTransport} from '@modelcontextprotocol/client/stdio';
 import {resolveCafeTarget, type CafeTarget} from '../boards/target.js';
 import {browserExecutable, browsers, customUserDataDirectory, extensionProfiles, lastUsedProfile, loadBrowserConnection,
@@ -10,13 +10,15 @@ const playwrightCli = join(dirname(createRequire(import.meta.url).resolve('@play
 const cookieNames = ['NID_AUT', 'NID_SES'] as const;
 const cookieDomains = new Set(['naver.com', 'cafe.naver.com', 'apis.cafe.naver.com']);
 type ExtensionTool = (name: string, args: Record<string, unknown>) => Promise<string>;
-type Connection = {key: string; client: Client; ready: Promise<void>; pending: Promise<void>; used: boolean};
+type Connection = {key: string; profile: string; client: Client; ready: Promise<void>; pending: Promise<void>; used: boolean};
 const connections = new Map<BrowserName, Connection>();
 const rejectedTokens = new Map<BrowserName, string>();
+const reconnectRequired = new Set<BrowserName>();
 
-async function disconnect(name: BrowserName, connection: Connection) {
+async function disconnect(name: BrowserName, connection: Connection, requireReconnect = false) {
     if (connections.get(name) !== connection) return;
     connections.delete(name);
+    if (requireReconnect) reconnectRequired.add(name);
     await connection.client.close().catch(() => {});
 }
 
@@ -47,10 +49,12 @@ function getConnection(name: BrowserName, profile: string, token?: string) {
         if (customDataDirectory) args.push('--user-data-dir', customDataDirectory);
         return client.connect(new StdioClientTransport({command: process.execPath, args, env, stderr: 'ignore'}));
     });
-    const connection = {key, client, ready, pending: Promise.resolve(), used: false};
+    const connection = {key, profile, client, ready, pending: Promise.resolve(), used: false};
     connections.set(name, connection);
     client.onclose = () => {
-        if (connections.get(name) === connection) connections.delete(name);
+        if (connections.get(name) !== connection) return;
+        connections.delete(name);
+        if (!token) reconnectRequired.add(name);
     };
     return connection;
 }
@@ -65,7 +69,9 @@ async function selectBrowser(choice: BrowserName | undefined) {
         ]);
         if (saved && profiles.includes(saved.profile)) return {name, ...saved};
         if (legacyProfile && profiles.includes(legacyProfile)) return {name, profile: legacyProfile, token: legacyToken};
-        const profile = profiles.length ? await lastUsedProfile(name, profiles) : undefined;
+        const connectedProfile = connections.get(name)?.profile;
+        const profile = connectedProfile && profiles.includes(connectedProfile) ? connectedProfile
+            : profiles.length ? await lastUsedProfile(name, profiles) : undefined;
         if (profile) return {name, profile, token: profiles.length === 1 ? legacyToken : undefined};
     }))).filter((option) => option !== undefined);
     const connected = available.filter(({name}) => connections.get(name)?.used);
@@ -84,6 +90,7 @@ async function selectBrowser(choice: BrowserName | undefined) {
 async function withPlaywrightExtension<T>(choice: BrowserName | undefined,
     use: (call: ExtensionTool, browser: BrowserName) => Promise<T>,
     signal?: AbortSignal,
+    reconnect = false,
 ) {
     signal?.throwIfAborted();
     const selected = await selectBrowser(choice);
@@ -91,8 +98,16 @@ async function withPlaywrightExtension<T>(choice: BrowserName | undefined,
     if (!('name' in selected) || !selected.name) return selected;
     const {name, profile} = selected;
     const token = selected.token === rejectedTokens.get(name) ? undefined : selected.token;
-    const run = (connection: Connection) => {
-        const read = connection.pending.then(async () => {
+    const failure = {
+        status: 'extension_connection_failed', browser: name,
+        message: 'Playwright 연결이 끊겼거나 완료되지 않았습니다. 다시 연결하려면 Codex에서 제트카에 브라우저를 다시 연결해 달라고 요청하세요.',
+    };
+    if (reconnectRequired.has(name) && !reconnect) return failure;
+    reconnectRequired.delete(name);
+
+    const connection = getConnection(name, profile, token);
+    const read = connection.pending.then(async () => {
+        try {
             await connection.ready;
             signal?.throwIfAborted();
             if (connections.get(name) !== connection) throw new Error('Playwright connection was replaced');
@@ -104,37 +119,18 @@ async function withPlaywrightExtension<T>(choice: BrowserName | undefined,
             }, name);
             connection.used = true;
             return value;
-        });
-        connection.pending = read.then(() => {}, () => {});
-        return read;
-    };
-    let connection = getConnection(name, profile, token);
-    try {
-        return await run(connection);
-    } catch (error) {
-        if (signal?.aborted) {
-            if (!connection.used) await disconnect(name, connection);
-            signal.throwIfAborted();
-        }
-        await disconnect(name, connection);
-        const replacement = connections.get(name);
-        if (connection.used && (!replacement || replacement.key === connection.key) &&
-            !(error instanceof SdkError && error.code === SdkErrorCode.RequestTimeout)) {
-            signal?.throwIfAborted();
-            connection = getConnection(name, profile, token);
-            try {
-                return await run(connection);
-            } catch {
-                await disconnect(name, connection);
-                signal?.throwIfAborted();
+        } catch {
+            if (signal?.aborted) {
+                if (!connection.used) await disconnect(name, connection, true);
+                signal.throwIfAborted();
             }
+            if (token && !connection.used && connections.get(name) === connection) rejectedTokens.set(name, token);
+            await disconnect(name, connection, true);
+            return failure;
         }
-        if (token) rejectedTokens.set(name, token);
-        return {
-            status: 'extension_connection_failed', browser: name,
-            message: '브라우저의 Playwright Extension 연결을 완료하지 못했습니다. 다시 요청한 뒤 연결 화면에서 네이버 카페 탭을 선택하고 Allow를 누르세요.',
-        };
-    }
+    });
+    connection.pending = read.then(() => {}, () => {});
+    return read;
 }
 
 async function cafeTabUrls(call: ExtensionTool) {
@@ -178,9 +174,11 @@ export function readExtensionLogin(choice: BrowserName | undefined, target: Cafe
     }, signal);
 }
 
-export function readExtensionSession(choice: BrowserName | undefined, findCafeInTabs = false, signal?: AbortSignal) {
+export function readExtensionSession(choice: BrowserName | undefined, findCafeInTabs = false, signal?: AbortSignal,
+    reconnect = false,
+) {
     return withPlaywrightExtension(choice, async (call, name) => {
         const urls = findCafeInTabs ? await cafeTabUrls(call) : [];
         return {name, urls, loginHeaderFor: await readNaverCookies(call)};
-    }, signal);
+    }, signal, reconnect);
 }

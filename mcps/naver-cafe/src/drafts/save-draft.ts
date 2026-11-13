@@ -5,8 +5,9 @@ import {readExtensionLogin} from '../auth/playwright-extension.js';
 import {cafeBoardUrl, resolveCafeTarget} from '../boards/target.js';
 import {createEditorRequest} from '../shared/naver-request.js';
 import {toolResult} from '../shared/tool-result.js';
+import {blockTextLength, editorBlock} from './editor-blocks.js';
 import {loadImages, maxImages} from './images.js';
-import {draftId, editorBlock, saveSmartEditorDraft} from './smart-editor.js';
+import {DraftPreparationError, draftId, saveSmartEditorDraft} from './smart-editor.js';
 
 export function registerSaveDraft(server: McpServer) {
     let pendingSave = Promise.resolve();
@@ -17,7 +18,7 @@ export function registerSaveDraft(server: McpServer) {
         inputSchema: z.object({
             title: z.string().trim().min(1).max(300).optional().describe('새 임시글에 필요합니다. 수정할 때 생략하면 기존 제목을 유지합니다.'),
             boardUrl: z.string().trim().min(1).max(4_096).optional().describe('네이버 카페 게시판 링크. 생략하면 설정된 기본 게시판이나 열린 탭의 게시판을 사용합니다.'),
-            blocks: z.array(editorBlock).max(100).default([]).describe('문단, 인용구, 사진을 표시할 순서대로 입력합니다. 사진 file에는 NAVER_IMAGE_DIR 안의 파일 이름을 넣으세요.'),
+            blocks: z.array(editorBlock).max(100).default([]).describe('문단, 인용구, 표, 구분선, 사진을 표시할 순서대로 입력합니다. 사진 file에는 NAVER_IMAGE_DIR 안의 파일 이름을 넣으세요.'),
             temporaryArticleId: draftId.optional().describe('수정할 네이버 카페 임시글의 ID. 생략하면 새 임시글을 만듭니다.'),
             representativeImage: z.number().int().positive().optional().describe('본문 사진 중 대표이미지 번호. 기존 사진을 포함하며 첫 사진이 1번입니다.'),
             browser: z.enum(browsers).optional().describe('사용자가 선택한 브라우저. 선택을 모르면 생략합니다.'),
@@ -37,7 +38,7 @@ export function registerSaveDraft(server: McpServer) {
         if (temporaryArticleId !== undefined && !title && !blocks.length && representativeImage === undefined) {
             throw new Error('변경할 제목, 추가할 본문, 대표이미지 중 하나를 입력하세요.');
         }
-        const textLength = blocks.reduce((sum, block) => sum + (block.type === 'image' ? 0 : block.text.length), 0);
+        const textLength = blocks.reduce((sum, block) => sum + blockTextLength(block), 0);
         if (textLength > 30_000) throw new Error('본문은 전체 30,000자 이하여야 합니다.');
         const save = pendingSave.then(async () => {
             signal.throwIfAborted();
@@ -45,13 +46,21 @@ export function registerSaveDraft(server: McpServer) {
             signal.throwIfAborted();
             const login = await readExtensionLogin(browser, target, signal);
             if (!('loginHeader' in login) || !login.loginHeader) return toolResult(login);
-            const saved = await saveSmartEditorDraft(login.board, title, blocks, photos, createEditorRequest(login.loginHeader, signal),
-                {temporaryArticleId, representativeImage});
-            return toolResult({
-                status: 'saved_as_draft', ...saved,
-                browser: login.name,
-                boardUrl: cafeBoardUrl(login.board)
-            });
+            const boardUrl = cafeBoardUrl(login.board);
+            const request = createEditorRequest(login.loginHeader, signal);
+            try {
+                const saved = await saveSmartEditorDraft(login.board, title, blocks, photos, request,
+                    {temporaryArticleId, representativeImage});
+                return toolResult({status: 'saved_as_draft', ...saved, browser: login.name, boardUrl});
+            } catch (error) {
+                signal.throwIfAborted();
+                if (!(error instanceof DraftPreparationError)) throw error;
+                const message = `${error.message} 임시저장 요청을 보내기 전에 중단됐습니다.`;
+                return {
+                    ...toolResult({status: 'draft_preparation_failed', browser: login.name, boardUrl, message}, message),
+                    isError: true,
+                };
+            }
         });
         pendingSave = save.then(() => {}, () => {});
         return save;

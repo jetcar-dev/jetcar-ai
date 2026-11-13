@@ -4,9 +4,9 @@
 
 ## 서식을 블록으로 옮기기
 
-- 원고에서 사진이나 인용구가 들어갈 위치를 먼저 파악하고 해당 순서에 맞게 블록을 넣는다.
-- 정렬이나 굵기가 바뀌는 문단부터 새 `text` 블록을 만든다. 서식이 같은 여러 문단은 한 블록에서 줄바꿈으로 이어 쓸 수 있다.
-- 사진 번호는 사진만 세고 문단과 인용구는 건너뛴다. 파일명으로 대표사진을 지정했다면 최종 본문 순서에서 그 사진의 번호를 계산한다.
+- 사진, 인용구, 표, 구분선은 원고에서 해당 항목이 나오는 순서대로 넣는다.
+- 정렬이 바뀌면 새 `text` 블록을 만든다. 같은 문단 안에서 글자 서식만 바뀌면 `runs`에 구간을 나눠 넣는다. 필요한 띄어쓰기는 구간의 `text`에 포함한다.
+- 사진 번호는 사진만 센다. 파일명으로 대표사진을 지정했다면 최종 본문 순서에서 그 사진의 번호를 계산한다.
 - 도구 입력 스키마에 있는 필드만 전달한다. HTML·마크다운 서식 기호는 `text`에서 문자 그대로 다뤄진다.
 
 ## MCP에서 입력할 수 있는 항목
@@ -15,10 +15,19 @@
 | --- | --- | --- |
 | 문단 | `{"type":"text","text":"캐스퍼 입고 안내\n차량 사진을 확인해 주세요."}` | 줄바꿈마다 새 문단을 만든다. |
 | 정렬 | `{"type":"text","text":"캐스퍼 입고","align":"center"}` | `left`는 왼쪽, `center`는 가운데, `right`는 오른쪽. 같은 블록의 모든 문단에 적용된다. |
-| 굵게 | `{"type":"text","text":"캐스퍼 입고","bold":true}` | 문단 블록의 글자 전체에 적용된다. 특정 단어만 굵게 하려면 카페 에디터에서 해당 단어를 선택한다. |
-| 사진 | `{"type":"image","file":"casper-front.jpg"}` | 사진 한 장당 블록 하나를 넣는다. `file`은 사진 폴더 안의 파일 이름이다. |
+| 글꼴과 크기 | `{"type":"text","text":"캐스퍼 입고","fontFamily":"nanumgothic","fontSize":24}` | `fontSize`는 10~40의 정수다. |
+| 글자 서식과 색 | `{"type":"text","text":"캐스퍼 입고","bold":true,"fontColor":"#173E72"}` | `italic`, `underline`, `strikeThrough`도 `true`로 켠다. `backgroundColor`는 글자 뒤 강조색이다. 색은 6자리 HEX다. |
+| 문장 일부 서식 | `{"type":"text","runs":[{"text":"지금 입고","bold":true},{"text":"된 차량입니다."}]}` | 블록의 기본 글자 서식을 상속하며 구간의 값이 우선한다. |
+| 글자 링크 | `{"type":"text","text":"차량 보기","link":"https://example.com/car"}` | `runs`의 구간과 표 셀에도 적용한다. |
+| 표 | `{"type":"table","rows":[["항목","내용"],["차종","캐스퍼"]]}` | 문자열 셀과 개별 서식을 지정한 객체 셀을 섞을 수 있다. |
+| 구분선 | `{"type":"divider","style":2,"align":"center"}` | `style`은 0~7이다. 0이 기본이다. |
+| 사진 | `{"type":"image","file":"casper-front.jpg","caption":"캐스퍼 전면","align":"center"}` | 사진 한 장당 블록 하나를 넣는다. `file`은 사진 폴더 안의 파일 이름이다. `link`로 사진을 눌렀을 때 열 주소를 지정한다. |
 | 대표사진 | `"representativeImage": 2` | `blocks`와 같은 수준의 옵션이다. 기존 사진까지 포함해 본문의 두 번째 사진을 선택한다. |
-| 인용구 | `{"type":"quote","text":"신규 입고 차량","style":3}` | 1 기본, 2 세로선, 3 말풍선, 4 밑줄, 5 포스트잇, 6 모서리. 생략하면 2번이다. |
+| 인용구 | `{"type":"quote","text":"신규 입고 차량","style":3,"source":"제트카"}` | 1 기본, 2 세로선, 3 말풍선, 4 밑줄, 5 포스트잇, 6 모서리. 생략하면 2번이다. `source`는 출처다. |
+
+글꼴 값은 `system`(기본), `nanumgothic`(나눔고딕), `nanummyeongjo`(나눔명조), `nanumbarungothic`(나눔바른고딕), `nanumsquare`(나눔스퀘어), `nanummaruburi`(마루부리), `nanumdasisijaghae`(다시 시작해), `nanumbareunhipi`(바른히피), `nanumuriddalsongeulssi`(우리딸손글씨)다.
+
+표 디자인은 `style` 0~7 중에 고른다. 셀 객체의 `cellColor`는 셀 전체 배경색이다. `rowSpan`은 세로 병합, `colSpan`은 가로 병합에 쓴다. 병합된 자리의 셀은 배열에서 빼고 행을 구성한다. 병합하지 않은 빈 셀은 빈 문자열을 넣는다.
 
 사진은 플러그인의 기본 사진 폴더 `%LOCALAPPDATA%\Jetcar\NaverCafeMcp\photos` 또는 설정된 `NAVER_IMAGE_DIR`에서 읽는다. JPG, JPEG, PNG, GIF를 지원한다. 한 번에 사진 20장, 한 장당 5 MiB, 합계 25 MiB까지 첨부할 수 있다.
 
@@ -31,10 +40,16 @@
   "boardUrl": "https://cafe.naver.com/f-e/cafes/12345/menus/10",
   "title": "캐스퍼 입고 안내",
   "blocks": [
-    {"type": "text", "text": "캐스퍼 입고", "align": "center", "bold": true},
+    {"type": "text", "text": "캐스퍼 입고", "align": "center", "bold": true, "fontSize": 24},
+    {"type": "divider", "style": 2},
     {"type": "quote", "text": "신규 입고 차량", "style": 3},
     {"type": "image", "file": "casper-front.jpg"},
     {"type": "image", "file": "casper-interior.jpg"},
+    {"type": "table", "rows": [
+      [{"text": "차량 정보", "colSpan": 2, "align": "center", "bold": true, "cellColor": "#E7EEF8"}],
+      ["차종", "캐스퍼"],
+      ["상태", "입고 완료"]
+    ]},
     {"type": "text", "text": "차량 사진을 확인해 주세요.\n문의는 댓글로 남겨주세요."}
   ],
   "representativeImage": 2
@@ -59,13 +74,10 @@
 
 | 항목 | PC 스마트에디터 ONE에서 입력하는 방법 |
 | --- | --- |
-| 표 | 도구 막대에서 **표**를 선택하고 각 셀에 입력한다. 표 가장자리에서 행·열을 추가하고 셀을 선택해 병합이나 색을 설정한다. [표 도움말](https://help.naver.com/service/5622/contents/15278?osType=PC) |
 | 스티커 | **스티커**를 누르고 목록에서 원하는 스티커를 고른다. [스티커 도움말](https://help.naver.com/service/5622/contents/15332?osType=PC) |
 | 동영상 | **동영상**에서 파일을 업로드한다. 외부 영상은 본문에 URL을 붙여넣어 첨부할 수 있다. [동영상 도움말](https://help.naver.com/service/5622/contents/15317?osType=PC) |
-| 구분선 | **구분선**을 넣고 삽입한 선을 선택해 디자인과 정렬을 바꾼다. [구분선 도움말](https://help.naver.com/service/5622/contents/15315?osType=PC) |
 | 장소 | **장소**에서 상호나 지명을 검색해 지도에 추가한다. [장소 도움말](https://help.naver.com/service/5622/contents/15302?osType=PC) |
-| 링크 | **링크**에서 URL을 입력하고 미리보기를 확인한 뒤 삽입한다. MCP의 `text`로 URL을 적으면 문자열만 전달된다. [링크 도움말](https://help.naver.com/service/5622/contents/15300?osType=PC) |
-| 글꼴·글자 크기·색·배경색·취소선·기울임·밑줄·일부 글자만 굵게 | 바꿀 글자를 선택하고 속성 도구 막대에서 서식을 지정한다. [에디터 기본 인터페이스](https://help.naver.com/service/5622/contents/12223?osType=PC) |
-| 사진 크기·정렬·캡션·링크 | 삽입된 사진을 선택하고 속성 도구 막대에서 바꾼다. 캡션은 사진 아래 설명란에 입력한다. [사진 속성 도움말](https://help.naver.com/service/5622/contents/15338?osType=PC) |
+| 링크 미리보기 카드 | **링크**에서 URL을 입력하고 미리보기를 확인한 뒤 삽입한다. [링크 도움말](https://help.naver.com/service/5622/contents/15300?osType=PC) |
+| 사진 크기 | 삽입된 사진을 선택하고 속성 도구 막대에서 바꾼다. [사진 속성 도움말](https://help.naver.com/service/5622/contents/15338?osType=PC) |
 
 스마트에디터 ONE의 파일, 일정, 투표, 글감, 소스코드, 수식도 에디터에서 직접 첨부한다. [네이버 카페 스마트에디터 ONE 도움말](https://help.naver.com/service/5622/category/3171?lang=ko)

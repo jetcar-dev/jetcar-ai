@@ -1,38 +1,12 @@
-import {randomUUID} from 'node:crypto';
 import {z} from 'zod';
 import type {CafeTarget} from '../boards/target.js';
 import type {loadImages} from './images.js';
 import {cafeHeaders, type CafeRequest} from '../shared/naver-request.js';
+import {editorBlock, editorComponent, editorId, paragraphs} from './editor-blocks.js';
 
 const editorApi = 'https://apis.cafe.naver.com/editor';
 const serviceConfig = 'https://platform.editor.naver.com/api/cafepc001/v1/service_config';
 const uncertain = '임시저장 결과를 확인할 수 없습니다. 다시 저장하기 전에 카페 글쓰기 화면의 임시등록 목록을 확인하세요.';
-const id = () => `SE-${randomUUID()}`;
-const quotationLayouts = {
-    1: 'default',
-    2: 'quotation_line',
-    3: 'quotation_bubble',
-    4: 'quotation_underline',
-    5: 'quotation_postit',
-    6: 'quotation_corner',
-} as const;
-
-export const editorBlock = z.discriminatedUnion('type', [
-    z.object({
-        type: z.literal('text'),
-        text: z.string().trim().min(1).max(30_000),
-        align: z.enum(['left', 'center', 'right']).optional(),
-        bold: z.boolean().optional(),
-    }),
-    z.object({
-        type: z.literal('quote'),
-        text: z.string().trim().min(1).max(5_000),
-        style: z.literal([1, 2, 3, 4, 5, 6]).optional().describe(
-            '스마트에디터 인용구: 1 기본, 2 세로선(생략 시), 3 말풍선, 4 밑줄, 5 포스트잇, 6 모서리',
-        ),
-    }),
-    z.object({type: z.literal('image'), file: z.string().min(1).max(255)}),
-]);
 type Block = z.infer<typeof editorBlock>;
 type Photo = Awaited<ReturnType<typeof loadImages>>[number];
 
@@ -82,12 +56,16 @@ async function readJson(request: CafeRequest, url: string | URL, headers: Header
     return data;
 }
 
+export class DraftPreparationError extends Error {}
+
 async function editorInfo(request: CafeRequest, target: CafeTarget) {
     const info = await readJson(
         request,
         `${editorApi}/v2/cafes/${target.cafeId}/editor?menuId=${target.menuId}&from=pc`,
         cafeHeaders, '카페 글쓰기 설정 조회',
-    );
+    ).catch((error: Error) => {
+        throw new DraftPreparationError(error.message, {cause: error});
+    });
     return info.result;
 }
 
@@ -149,22 +127,10 @@ async function uploadPhoto(request: CafeRequest, photo: Photo, session: Awaited<
     const animated = Number(xmlField(item, 'animatedCnt')) > 1;
     const format = animated ? 'animated' : 'normal';
     return {
-        '@ctype': 'image', id: id(), layout: 'default', src: urlOfImage.href,
+        '@ctype': 'image', layout: 'default', src: urlOfImage.href,
         domain: urlOfImage.origin, path: `${path.replace(/\/$/, '')}/${fileName}`, fileName,
         width, height, fileSize, internalResource: true, format, displayFormat: format,
     };
-}
-
-function paragraphs(text: string, align?: string, bold?: boolean) {
-    return text.split(/\r\n?|\n/).map((value) => ({
-        '@ctype': 'paragraph',
-        id: id(),
-        ...(align && {style: {'@ctype': 'paragraphStyle', align}}),
-        nodes: value ? [{
-            '@ctype': 'textNode', id: id(), value,
-            ...(bold && {style: {'@ctype': 'nodeStyle', bold}}),
-        }] : [],
-    }));
 }
 
 function draftEndpoint(target: CafeTarget, temporaryArticleId?: DraftId) {
@@ -214,15 +180,16 @@ export async function saveSmartEditorDraft(
         }
     }
     const appended = blocks.map((block) => {
-        if (block.type === 'text') {
-            return {'@ctype': 'text', id: id(), layout: 'default', value: paragraphs(block.text, block.align, block.bold)};
-        }
-        if (block.type === 'quote') {
-            return {'@ctype': 'quotation', id: id(), layout: quotationLayouts[block.style ?? 2], value: paragraphs(block.text)};
-        }
+        if (block.type !== 'image') return editorComponent(block);
         const photo = uploaded.get(block.file);
         if (!photo) throw new Error(`첨부할 사진을 찾지 못했습니다: ${block.file}`);
-        return {...photo, id: id()};
+        const {align, caption, link} = block;
+        return {
+            ...photo, id: editorId(),
+            ...(align && {align}),
+            ...(caption && {caption: paragraphs({text: caption})}),
+            ...(link && {link}),
+        };
     });
     let imageIndex = 0;
     const components = [...oldComponents, ...appended].map((component) => component['@ctype'] === 'image'
