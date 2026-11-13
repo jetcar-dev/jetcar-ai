@@ -4,10 +4,19 @@ Chrome 또는 Edge의 네이버 로그인 세션을 사용해 카페 게시판�
 
 ## 플러그인에서 사용하기
 
-1. [제트카 플러그인](../../README.md#설치-및-업데이트)과 [Node.js](https://nodejs.org/) 22 이상을 설치합니다.
-2. 평소 네이버에 로그인하는 Chrome 또는 Edge 프로필에 [Playwright Extension](https://chromewebstore.google.com/detail/playwright-extension/mmlmfjhmonkocbjadbfplnigmagldckm)을 설치합니다.
-3. Codex에 “네이버 카페 로그인 상태 확인해줘”라고 요청합니다. 처음 연결할 때는 Codex가 안내하는 `--setup-browser` 명령을 PowerShell에서 실행합니다.
-4. 사용할 브라우저 프로필을 고르고, 그 프로필의 Playwright Extension 화면에서 복사한 토큰을 PowerShell에 붙여넣습니다. 토큰을 재발급하거나 프로필을 바꿨다면 이 연결 단계를 다시 진행합니다.
+1. [제트카 플러그인](../../README.md#설치-및-업데이트)을 설치합니다.
+2. PowerShell에서 아래 명령으로 **Node.js LTS**를 설치합니다. `node --version` 결과가 `v22` 이상이면 건너뜁니다. 설치 후 PowerShell과 Codex를 다시 열고 버전을 확인합니다. [Node.js 설치 파일](https://nodejs.org/en/download)
+
+   ```powershell
+   winget install --id OpenJS.NodeJS.LTS --exact --source winget
+   ```
+
+3. 사용할 Chrome 또는 Edge 프로필에서 네이버에 로그인하고 확장을 설치합니다. Edge에서 Chrome 웹 스토어를 열었을 때 다른 스토어의 확장 허용을 묻는다면 **허용**을 누릅니다. [Playwright Extension 설치](https://chromewebstore.google.com/detail/playwright-extension/mmlmfjhmonkocbjadbfplnigmagldckm)
+4. Codex에서 **제트카** 플러그인을 선택하고 “네이버 카페 로그인 상태 확인해줘”라고 입력합니다. 처음 연결할 때는 Codex가 안내하는 `--setup-browser` 명령을 PowerShell에 붙여넣습니다.
+5. 사용할 브라우저 프로필을 고릅니다. 그 프로필에서 Playwright Extension 아이콘을 누르고 토큰 옆 복사 버튼을 클릭한 뒤, PowerShell의 토큰 입력 칸에 붙여넣고 Enter를 누릅니다. 연결 정보는 각자 PC에 저장됩니다.
+6. Codex에서 “네이버 카페 로그인 상태 확인해줘”를 다시 입력합니다. 연결되면 “제트카 카페 게시판 목록 보여줘”로 확인할 수 있습니다.
+
+토큰을 재발급하거나 브라우저 프로필을 바꾸면 4~5단계를 다시 진행합니다.
 
 사진은 `%LOCALAPPDATA%\Jetcar\NaverCafeMcp\photos`에 넣고 파일 이름을 알려주세요. 저장한 글은 네이버 카페 글쓰기 화면의 **임시등록**에서 확인할 수 있습니다.
 
