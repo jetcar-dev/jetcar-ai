@@ -4,6 +4,22 @@
 
 ## 설치 및 업데이트
 
+### Windows에서 설치하기
+
+1. ChatGPT 데스크톱 앱에서 **Codex**를 한 번 열고, **Node.js 22 이상**을 설치합니다. [Node.js 다운로드](https://nodejs.org/en/download)
+2. PowerShell에서 아래 명령을 실행합니다.
+
+   ```powershell
+   npx --yes --prefer-online @jetcar/jetcar-ai@latest
+   ```
+
+3. 안내받은 설치 비밀번호를 입력하고 Enter를 누릅니다. 설치가 끝나면 Codex를 다시 열고 새 채팅에서 **제트카**를 선택합니다.
+
+새 버전을 받으려면 같은 명령을 다시 실행합니다. 네이버 카페의 브라우저 연결은 [사용 안내](mcps/naver-cafe/README.md#플러그인에서-사용하기)를 확인합니다.
+
+<details>
+<summary>ZIP 및 GitHub 마켓플레이스 설치</summary>
+
 ### Codex 화면에서 설치하기
 
 1. [제트카 ZIP 다운로드](https://github.com/jetcar-dev/jetcar-ai/archive/refs/heads/main.zip)를 누르고, 다운로드한 파일을 우클릭해 **모두 압축 풀기**를 선택합니다.
@@ -48,6 +64,8 @@ PowerShell에서 설치했다면 아래 명령을 실행하고 Codex를 다시 �
 ```powershell
 codex plugin marketplace upgrade jetcar-tools
 ```
+
+</details>
 
 ## MCP 목록
 
