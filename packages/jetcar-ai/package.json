@@ -1,9 +1,9 @@
 {
-  "name": "jetcar-setup",
+  "name": "@jetcar/jetcar-ai",
   "version": "0.1.6",
   "description": "Installs the Jetcar plugin in Codex Desktop on Windows",
   "type": "module",
-  "bin": { "jetcar-setup": "install.mjs" },
+  "bin": { "jetcar-ai": "install.mjs" },
   "files": ["install.mjs", "payload"],
   "engines": { "node": ">=22" },
   "os": ["win32"],
@@ -11,7 +11,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/jetcar-dev/jetcar-ai.git",
-    "directory": "packages/jetcar-setup"
+    "directory": "packages/jetcar-ai"
   },
   "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org/" }
 }
