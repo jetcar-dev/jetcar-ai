@@ -5,7 +5,7 @@ import {resolveCafeSelection} from '../boards/cafe-selection.js';
 import {cafeBoardUrl} from '../boards/target.js';
 import {cafeHeaders} from '../shared/naver-request.js';
 import {toolResult} from '../shared/tool-result.js';
-import {draftId} from './smart-editor.js';
+import {draftId} from './draft-client.js';
 
 const dateField = z.union([z.number(), z.string()]).nullish();
 const draftList = z.object({

@@ -3,8 +3,7 @@ import {realpath} from 'node:fs/promises';
 import {basename, dirname, join} from 'node:path';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {z} from 'zod';
-import {imageDirectory} from '../shared/config.js';
-import type {CafeRequest} from '../shared/naver-request.js';
+import type {EditorRequest} from './request.js';
 
 export const maxVideos = 10;
 const chunkSize = 5 * 1024 * 1024;
@@ -29,13 +28,16 @@ const videoHeader = z.object({width: z.number().int().positive(), height: z.numb
     duration: z.number().positive(), rotation: z.number().optional()});
 const thumbnail = z.object({type: z.string(), path: z.string().min(1)});
 
-export async function loadVideos(names: string[]) {
+export async function loadVideos(names: string[], attachmentDirectory: (name: string) => string) {
     if (!names.length) return [];
-    const directory = await realpath(imageDirectory());
+    const directories = new Map<string, Promise<string>>();
     return Promise.all(names.map(async (name) => {
         if (name !== basename(name) || /[\\/:\x00-\x1f]/.test(name) || !/\.mp4$/i.test(name)) {
             throw new Error('동영상은 지정 폴더에 있는 MP4 파일의 이름만 입력하세요.');
         }
+        const root = attachmentDirectory(name);
+        if (!directories.has(root)) directories.set(root, realpath(root));
+        const directory = await directories.get(root)!;
         const file = await realpath(join(directory, name));
         if (dirname(file) !== directory) throw new Error('지정 폴더 안의 MP4 파일을 사용하세요.');
         const blob = await openAsBlob(file, {type: 'video/mp4'});
@@ -46,13 +48,13 @@ export async function loadVideos(names: string[]) {
 
 export type VideoFile = Awaited<ReturnType<typeof loadVideos>>[number];
 
-async function videoResponse(request: CafeRequest, url: string | URL, options: RequestInit, step: string) {
+async function videoResponse(request: EditorRequest, url: string | URL, options: RequestInit, step: string) {
     const response = await request(url, options).catch(() => undefined);
     if (!response?.ok) throw new Error(`${step}에 실패했습니다${response ? `(HTTP ${response.status})` : ''}.`);
     return response;
 }
 
-async function videoJson(request: CafeRequest, url: string | URL, options: RequestInit, step: string) {
+async function videoJson(request: EditorRequest, url: string | URL, options: RequestInit, step: string) {
     const response = await videoResponse(request, url, options, step);
     const data = await response.json().catch(() => undefined);
     if (!data || data.error || (Array.isArray(data.errors) && data.errors.length)) {
@@ -74,7 +76,7 @@ function thumbnailUrl(path: string) {
     return url.href;
 }
 
-async function waitForVideo(request: CafeRequest, base: string, key: string, signal?: AbortSignal) {
+async function waitForVideo(request: EditorRequest, base: string, key: string, signal?: AbortSignal) {
     const types = ['Ingest', 'VideoHeader', 'Thumbnails'];
     const query = `query getVideoStatus { video(id: ${JSON.stringify(key)}, type: ${JSON.stringify(types)}) {
         type status data { ...ingest ...videoHeader ...thumbnails } errors { code message }
@@ -104,7 +106,7 @@ async function waitForVideo(request: CafeRequest, base: string, key: string, sig
     throw new Error('네이버가 동영상 정보를 만드는 중에 응답 시간이 지났습니다.');
 }
 
-export async function uploadVideo(request: CafeRequest, video: VideoFile, settings: unknown, editorHeaders: HeadersInit,
+export async function uploadVideo(request: EditorRequest, video: VideoFile, settings: unknown, editorHeaders: HeadersInit, product: string,
     signal?: AbortSignal,
 ) {
     const config = videoConfig.safeParse(settings);
@@ -112,7 +114,7 @@ export async function uploadVideo(request: CafeRequest, video: VideoFile, settin
     const {apiInfo, infraInfo: {videoInfra}, userInfo: {userId}} = config.data;
     const tokenUrl = URL.parse(apiInfo.fetchVideoUploaderToken, 'https://platform.editor.naver.com');
     if (!tokenUrl || tokenUrl.origin !== 'https://platform.editor.naver.com' || tokenUrl.username || tokenUrl.password ||
-        !/^\/api\/cafepc001\/v[12]\/video-uploader\/token$/.test(tokenUrl.pathname)) {
+        ![1, 2].some((version) => tokenUrl.pathname === `/api/${product}/v${version}/video-uploader/token`)) {
         throw new Error('네이버 동영상 토큰 주소를 확인할 수 없습니다.');
     }
     tokenUrl.pathname = tokenUrl.pathname.replace('/v1/', '/v2/');

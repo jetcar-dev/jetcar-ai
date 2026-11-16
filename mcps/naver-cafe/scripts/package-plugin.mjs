@@ -26,9 +26,9 @@ try {
     }
     run(process.execPath, [npm, 'run', 'build', '--', '--outDir', join(staging, 'dist')], project);
     run(process.execPath, [npm, 'ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund'], staging);
+    run(process.execPath, [join(project, 'scripts', 'patch-playwright-response.mjs'), staging], project);
     run(tar, ['-czf', pendingArchive, '--exclude=node_modules/.bin', '--exclude=node_modules/.package-lock.json',
-        'package.json', 'node_modules', 'dist/server.js',
-        'dist/auth', 'dist/boards', 'dist/articles', 'dist/drafts', 'dist/shared'], staging);
+        'package.json', 'node_modules', 'dist'], staging);
     await rename(pendingArchive, archive);
     console.log(archive);
 } finally {

@@ -4,7 +4,7 @@ import {z} from 'zod';
 export const editorId = () => `SE-${randomUUID()}`;
 
 const align = z.enum(['left', 'center', 'right']);
-const color = z.string().regex(/^#[0-9a-f]{6}$/i).describe('예: #173E72');
+const color = z.string().regex(/^#[0-9a-fA-F]{6}$/).describe('예: #173E72');
 const linkUrl = z.url({protocol: /^https?$/}).max(4_096);
 const format = {
     bold: z.boolean().optional(),
@@ -43,7 +43,7 @@ function tableWidth(rows: Cell[][]) {
 
 function validTable(rows: Cell[][]) {
     const width = tableWidth(rows);
-    if (width > 20) return false;
+    if (width < 1 || width > 20) return false;
     const grid = rows.map(() => Array<boolean>(width).fill(false));
     for (const [row, cells] of rows.entries()) {
         let column = 0;
@@ -68,14 +68,14 @@ function validTable(rows: Cell[][]) {
 export const editorBlock = z.discriminatedUnion('type', [
     z.object({
         type: z.literal('text'),
-        text: z.string().trim().min(1).max(30_000).optional(),
+        text: z.string().max(30_000).refine((text) => text.trim().length > 0, '본문을 입력하세요.').optional(),
         runs: runs.optional().describe('같은 문단 안에서 구간별 서식을 지정합니다. text와 함께 사용하지 않습니다.'),
         ...paragraph,
     }).refine(({text, runs}) => text ? !runs : !!runs?.some(({text}) => text.trim()),
         '본문에 text 또는 내용이 있는 runs 중 하나를 입력하세요.'),
     z.object({
         type: z.literal('quote'),
-        text: z.string().trim().min(1).max(5_000),
+        text: z.string().max(5_000).refine((text) => text.trim().length > 0, '인용구 내용을 입력하세요.'),
         source: z.string().trim().min(1).max(1_000).optional(),
         ...paragraph,
         style: z.literal([1, 2, 3, 4, 5, 6]).optional().describe(
@@ -84,7 +84,7 @@ export const editorBlock = z.discriminatedUnion('type', [
     }),
     z.object({
         type: z.literal('table'),
-        rows: z.array(z.array(cell).min(1).max(20)).min(1).max(30).refine(validTable,
+        rows: z.array(z.array(cell).max(20)).min(1).max(30).refine(validTable,
             '표는 모든 행의 열 수가 같아야 합니다. 병합한 영역에는 셀을 추가로 넣지 마세요.'),
         align: align.optional(),
         style: z.literal([0, 1, 2, 3, 4, 5, 6, 7]).optional().describe('표 디자인 번호. 0은 기본입니다.'),
@@ -111,13 +111,13 @@ export const editorBlock = z.discriminatedUnion('type', [
 
 type Format = {[K in keyof typeof format]?: z.infer<(typeof format)[K]>};
 type Text = {text?: string; runs?: z.infer<typeof runs>; align?: z.infer<typeof align>} & Format;
-type Block = z.infer<typeof editorBlock>;
+export type EditorBlock = z.infer<typeof editorBlock>;
 
 function textLength({text, runs}: Text) {
     return runs?.reduce((count, run) => count + run.text.length, 0) ?? text?.length ?? 0;
 }
 
-export function blockTextLength(block: Block): number {
+export function blockTextLength(block: EditorBlock): number {
     switch (block.type) {
         case 'text': return textLength(block);
         case 'quote': return block.text.length + (block.source?.length ?? 0);
@@ -166,7 +166,7 @@ const quotationLayouts = {
     6: 'quotation_corner',
 } as const;
 
-export function editorComponent(block: Exclude<Block, {type: 'image' | 'video'}>) {
+export function editorComponent(block: Exclude<EditorBlock, {type: 'image' | 'video'}>) {
     switch (block.type) {
         case 'text': {
             const {type, ...text} = block;

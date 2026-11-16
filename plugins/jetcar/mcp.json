@@ -7,6 +7,12 @@
       "args": ["${PLUGIN_ROOT}/mcps/naver-cafe/launch.mjs"],
       "cwd": "${PLUGIN_ROOT}",
       "env": { "NAVER_CAFE_ID": "23209962" }
+    },
+    "smart-editor-one": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${PLUGIN_ROOT}/mcps/smart-editor-one/server.cjs"],
+      "cwd": "${PLUGIN_ROOT}"
     }
   }
 }

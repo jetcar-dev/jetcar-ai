@@ -26,16 +26,15 @@ export function createCafeReadRequest(loginHeaderFor: (hostname: string) => stri
     };
 }
 
-export function createEditorRequest(loginHeader: string, signal?: AbortSignal): CafeRequest {
+export function createCafeDraftRequest(loginHeader: string, signal?: AbortSignal): CafeRequest {
     return async (input, options = {}) => {
         const url = new URL(input);
-        if (url.protocol !== 'https:' || url.username || url.password || url.port || !url.hostname.endsWith('.naver.com')) {
-            throw new Error('네이버 에디터 요청 주소를 확인할 수 없습니다.');
+        if (url.origin !== 'https://apis.cafe.naver.com' || url.username || url.password ||
+            !url.pathname.startsWith('/editor/v2/cafes/')) {
+            throw new Error('네이버 카페 임시글 요청 주소를 확인할 수 없습니다.');
         }
         const headers = requestHeaders(options);
-        if (url.origin === 'https://apis.cafe.naver.com' && url.pathname.startsWith('/editor/v2/cafes/')) {
-            headers.set('Cookie', loginHeader);
-        }
+        headers.set('Cookie', loginHeader);
         const timeout = AbortSignal.timeout(30_000);
         return fetch(url, {...options, headers, redirect: 'error', signal: signal ? AbortSignal.any([signal, timeout]) : timeout});
     };

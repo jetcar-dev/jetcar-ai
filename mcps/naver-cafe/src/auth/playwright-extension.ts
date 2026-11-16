@@ -1,5 +1,7 @@
 import {createRequire} from 'node:module';
 import {dirname, join} from 'node:path';
+import {createInterface} from 'node:readline';
+import {Readable} from 'node:stream';
 import {Client} from '@modelcontextprotocol/client';
 import {StdioClientTransport} from '@modelcontextprotocol/client/stdio';
 import {resolveCafeTarget, type CafeTarget} from '../boards/target.js';
@@ -9,11 +11,29 @@ import {browserExecutable, browsers, customUserDataDirectory, extensionProfiles,
 const playwrightCli = join(dirname(createRequire(import.meta.url).resolve('@playwright/mcp/package.json')), 'cli.js');
 const cookieNames = ['NID_AUT', 'NID_SES'] as const;
 const cookieDomains = new Set(['naver.com', 'cafe.naver.com', 'apis.cafe.naver.com', 'article.cafe.naver.com']);
+const approvalTimeoutMs = 120_000;
+const browserRequestTimeoutMs = 20_000;
 type ExtensionTool = (name: string, args: Record<string, unknown>) => Promise<string>;
-type Connection = {key: string; profile: string; client: Client; ready: Promise<void>; pending: Promise<void>; used: boolean};
+type RelayStage = 'launch' | 'waiting_for_browser' | 'browser_connected' | 'ready';
+type Connection = {key: string; profile: string; client: Client; ready: Promise<void>; pending: Promise<void>;
+    used: boolean; stage: RelayStage; onRelayReady?: () => void;
+    command?: {name: string; id: string; replied: boolean}; failureReason?: string};
 const connections = new Map<BrowserName, Connection>();
 const rejectedTokens = new Map<BrowserName, string>();
 const reconnectRequired = new Set<BrowserName>();
+const relayMessages: Record<RelayStage, string> = {
+    launch: 'Playwright 연결 프로그램을 시작하지 못했습니다.',
+    waiting_for_browser: 'Playwright가 브라우저 확장 프로그램과 연결하지 못했습니다.',
+    browser_connected: '확장 프로그램이 연결됐지만 브라우저와 초기 연결을 마치지 못했습니다.',
+    ready: '브라우저에 연결된 뒤 네이버 로그인 상태를 읽지 못했습니다.',
+};
+function bridgeFailure(text: string) {
+    if (/No attached tab|No tab with (?:id|given)|Target closed|detached while handling/i.test(text)) return 'tab_unavailable';
+    if (/another debugger|already attached|already connected to another client/i.test(text)) return 'tab_in_use';
+    if (/Cannot access a chrome|Cannot attach to this target|Cannot access contents|Cannot access target/i.test(text)) return 'tab_access_denied';
+    if (/wasn't found|Method not found|Unknown method/i.test(text)) return 'browser_command_unsupported';
+    if (/Request timed out|Timeout .* exceeded/i.test(text)) return 'timed_out';
+}
 
 async function disconnect(name: BrowserName, connection: Connection, requireReconnect = false) {
     if (connections.get(name) !== connection) return;
@@ -32,7 +52,7 @@ function getConnection(name: BrowserName, profile: string, token?: string) {
     const current = connections.get(name);
     if (current?.key === key) return current;
 
-    const env: Record<string, string> = {};
+    const env: Record<string, string> = {DEBUG: 'pw:mcp:relay,pw:mcp:error'};
     for (const key of ['LOCALAPPDATA', 'APPDATA', 'USERPROFILE', 'XDG_CONFIG_HOME']) {
         const value = process.env[key];
         if (value) env[key] = value;
@@ -43,13 +63,33 @@ function getConnection(name: BrowserName, profile: string, token?: string) {
     const ready = Promise.resolve(closing).then(async () => {
         const executable = await browserExecutable(name);
         if (connections.get(name)?.client !== client) throw new Error('Playwright connection was replaced');
-        const args = [playwrightCli, '--extension', '--caps=storage', '--no-tab-group', '--codegen=none',
+        // Playwright binds its local extension relay to localhost. Prefer an IPv4 loopback address on Windows.
+        const nodeArgs = process.platform === 'win32' ? ['--dns-result-order=ipv4first'] : [];
+        const args = [...nodeArgs, playwrightCli, '--extension', '--caps=storage', '--no-tab-group', '--codegen=none',
             '--browser', name === 'chrome' ? 'chrome' : 'msedge', '--profile-dir-name', profile];
         if (executable) args.push('--executable-path', executable);
         if (customDataDirectory) args.push('--user-data-dir', customDataDirectory);
-        return client.connect(new StdioClientTransport({command: process.execPath, args, env, stderr: 'ignore'}));
+        const transport = new StdioClientTransport({command: process.execPath, args, env, stderr: 'pipe'});
+        if (transport.stderr instanceof Readable) {
+            createInterface({input: transport.stderr}).on('line', (line) => {
+                if (line.includes('pw:mcp:error')) connection.failureReason ??= bridgeFailure(line);
+                if (!line.includes('pw:mcp:relay')) return;
+                // Keep only the stage. The browser process can include URLs or session data in errors.
+                if (line.includes('Waiting for incoming extension connection') && connection.stage === 'launch') connection.stage = 'waiting_for_browser';
+                if (line.includes('New connection to /extension/') && connection.stage !== 'ready') connection.stage = 'browser_connected';
+                if (line.includes('Extension connection established')) {
+                    connection.stage = 'ready';
+                    connection.onRelayReady?.();
+                }
+                const command = /← Playwright:\s+([A-Za-z]+\.[A-Za-z]+) \(id=(\d+)\)/.exec(line);
+                if (command) connection.command = {name: command[1], id: command[2], replied: false};
+                const replyId = /→ Playwright:\s+response\(id=(\d+)\)/.exec(line)?.[1];
+                if (connection.command && replyId === connection.command.id) connection.command.replied = true;
+            });
+        }
+        return client.connect(transport);
     });
-    const connection = {key, profile, client, ready, pending: Promise.resolve(), used: false};
+    const connection: Connection = {key, profile, client, ready, pending: Promise.resolve(), used: false, stage: 'launch'};
     connections.set(name, connection);
     client.onclose = () => {
         if (connections.get(name) !== connection) return;
@@ -107,26 +147,46 @@ async function withPlaywrightExtension<T>(choice: BrowserName | undefined,
 
     const connection = getConnection(name, profile, token);
     const read = connection.pending.then(async () => {
+        const browserTimeout = new AbortController();
+        let browserTimer: ReturnType<typeof setTimeout> | undefined;
         try {
             await connection.ready;
             signal?.throwIfAborted();
             if (connections.get(name) !== connection) throw new Error('Playwright connection was replaced');
+            connection.failureReason = undefined;
+            connection.command = undefined;
+            if (connection.stage !== 'ready') connection.onRelayReady = () => {
+                browserTimer = setTimeout(() => browserTimeout.abort(new Error('Request timed out after browser approval')),
+                    browserRequestTimeoutMs);
+            };
+            const requestSignal = signal ? AbortSignal.any([signal, browserTimeout.signal]) : browserTimeout.signal;
             const value = await use(async (tool, parameters) => {
                 const result = await connection.client.callTool({name: tool, arguments: {...parameters, _meta: {raw: true}}},
-                    {timeout: connection.used || token ? 30_000 : 55_000, signal});
-                if (result.isError) throw new Error('Playwright extension tool failed');
-                return result.content.flatMap((item) => item.type === 'text' ? [item.text] : []).join('\n');
+                    {timeout: connection.stage === 'ready' || token ? browserRequestTimeoutMs : approvalTimeoutMs, signal: requestSignal});
+                const response = result.content.flatMap((item) => item.type === 'text' ? [item.text] : []).join('\n');
+                if (result.isError) {
+                    connection.failureReason ??= bridgeFailure(response);
+                    throw new Error('Playwright extension tool failed');
+                }
+                return response;
             }, name);
             connection.used = true;
+            connection.stage = 'ready';
             return value;
-        } catch {
+        } catch (error) {
             if (signal?.aborted) {
                 if (!connection.used) await disconnect(name, connection, true);
                 signal.throwIfAborted();
             }
             if (token && !connection.used && connections.get(name) === connection) rejectedTokens.set(name, token);
             await disconnect(name, connection, true);
-            return failure;
+            const reason = connection.failureReason ?? (error instanceof Error ? bridgeFailure(error.message) : undefined);
+            return {...failure, stage: connection.stage, reason, browserCommand: connection.command?.name,
+                browserReplied: connection.command?.replied,
+                message: `${relayMessages[connection.stage]} ${failure.message}`};
+        } finally {
+            clearTimeout(browserTimer);
+            connection.onRelayReady = undefined;
         }
     });
     connection.pending = read.then(() => {}, () => {});

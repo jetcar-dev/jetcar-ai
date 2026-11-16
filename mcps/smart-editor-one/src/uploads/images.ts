@@ -1,6 +1,5 @@
 import {readFile, realpath, stat} from 'node:fs/promises';
 import {basename, dirname, join} from 'node:path';
-import {imageDirectory} from '../shared/config.js';
 
 export const maxImages = 20;
 const maxImageBytes = 5 * 1024 * 1024;
@@ -9,14 +8,17 @@ const imageTypes = {
     '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif',
 } as const;
 
-export async function loadImages(names: string[]) {
+export async function loadImages(names: string[], attachmentDirectory: (name: string) => string) {
     if (names.length === 0) return [];
-    const directory = await realpath(imageDirectory());
+    const directories = new Map<string, Promise<string>>();
     const files = await Promise.all(names.map(async (name) => {
         const extension = name.slice(name.lastIndexOf('.')).toLowerCase();
         if (name !== basename(name) || /[\\/:\x00-\x1f]/.test(name) || !Object.hasOwn(imageTypes, extension)) {
             throw new Error('이미지는 지정 폴더에 있는 JPG, PNG, GIF 파일의 이름만 입력하세요.');
         }
+        const root = attachmentDirectory(name);
+        if (!directories.has(root)) directories.set(root, realpath(root));
+        const directory = await directories.get(root)!;
         const file = await realpath(join(directory, name));
         if (dirname(file) !== directory) throw new Error('지정 폴더 안의 이미지 파일을 사용하세요.');
         const info = await stat(file);

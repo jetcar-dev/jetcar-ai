@@ -7,8 +7,9 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "node scripts/build.mjs",
     "package:plugin": "node scripts/package-plugin.mjs",
+    "prestart": "node scripts/patch-playwright-response.mjs",
     "start": "node dist/server.js",
     "setup:browser": "node dist/auth/setup-browser.js"
   },
