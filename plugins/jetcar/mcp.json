@@ -13,6 +13,12 @@
       "command": "node",
       "args": ["${PLUGIN_ROOT}/mcps/smart-editor-one/server.cjs"],
       "cwd": "${PLUGIN_ROOT}"
+    },
+    "jetcar-site": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${PLUGIN_ROOT}/mcps/jetcar-site/launch.mjs"],
+      "cwd": "${PLUGIN_ROOT}"
     }
   }
 }
